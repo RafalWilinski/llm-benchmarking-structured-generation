@@ -29,6 +29,7 @@ export const wideJsonSchema = z.object({
   hasCar: z.boolean(),
   height: z.number(),
   weight: z.number(),
+  achievements: z.array(z.string()),
 });
 
 export const complexJsonSchema = z.object({
@@ -56,7 +57,7 @@ export const complexJsonSchema = z.object({
           position: z.string(),
           startDateTime: z.string(),
           endDateTime: z.string(),
-          responsibilities: z.array(z.string()),
+          achievements: z.array(z.string()),
         })
       ),
       skills: z.array(
@@ -80,6 +81,7 @@ export const complexJsonSchema = z.object({
   metadata: z.object({
     lastUpdated: z.string(),
     version: z.string(),
+    dataSource: z.string(),
   }),
 });
 
@@ -215,7 +217,6 @@ export const superComplexJsonSchema = z.object({
   metadata: z.object({
     createdAt: z.string(),
     lastUpdated: z.string(),
-    version: z.string(),
     dataSource: z.string(),
     accessLevel: z.enum(["public", "private", "restricted"]),
     tags: z.array(z.string()),

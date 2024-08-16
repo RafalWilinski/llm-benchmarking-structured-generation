@@ -1,27 +1,9 @@
-import { generateObject, LanguageModel } from "ai";
+import { LanguageModel } from "ai";
 import { z } from "zod";
 import { complexJsonSchema, superComplexJsonSchema, wideJsonSchema } from "./schemas";
 import { openai } from "@ai-sdk/openai";
+import { run } from "./run";
 
-async function run(
-  model: LanguageModel,
-  schema: z.ZodType<any>,
-  mode: "tool" | "json" = "json",
-  inputCost: number,
-  outputCost: number
-) {
-  const { object, usage } = await generateObject({
-    model,
-    schema,
-    mode,
-    prompt: "Generate a simple JSON object adhering to the provided schema",
-  });
-
-  const cost =
-    usage.completionTokens * (outputCost / 1000000) + usage.promptTokens * (inputCost / 1000000);
-
-  return { object, cost };
-}
 const modelConfigs = [
   {
     name: "gpt-4o-2024-08-06",
@@ -173,3 +155,81 @@ Object.entries(groupedBySchema).forEach(([schema, methods]) => {
     console.log(`   Success rate: ${method.successRate.toFixed(4)}%`);
   });
 });
+
+// Benchmark cold start cases
+const coldStartModels = [
+  {
+    model: openai("gpt-4o-2024-08-06", { structuredOutputs: true }),
+    inputCost: 2.5,
+    outputCost: 10,
+  },
+  {
+    model: openai("gpt-4o-mini", { structuredOutputs: true }),
+    inputCost: 0.15,
+    outputCost: 0.6,
+  },
+];
+
+const coldStartRuns = 50;
+
+async function measureColdStart(
+  model: {
+    model: LanguageModel;
+    inputCost: number;
+    outputCost: number;
+  },
+  schema: z.ZodObject<any>
+) {
+  let totalFirstRequestTime = 0;
+  let totalSecondRequestTime = 0;
+  const jsonSchema = schema.shape;
+
+  for (let i = 0; i < coldStartRuns; i++) {
+    // Alter first top-level property to prevent caching
+    const modifiedSchema = {
+      ...jsonSchema,
+      [Object.keys(jsonSchema)[0]]: `${jsonSchema[Object.keys(jsonSchema)[0]]}_${Math.random()
+        .toString(36)
+        .substring(7)}`,
+    };
+
+    // First request (cold start)
+    const startFirst = performance.now();
+    await run(model.model, modifiedSchema, "json", model.inputCost, model.outputCost);
+    const endFirst = performance.now();
+    const firstRequestTime = endFirst - startFirst;
+
+    // Second request (warm start)
+    const startSecond = performance.now();
+    await run(model.model, modifiedSchema, "json", model.inputCost, model.outputCost);
+    const endSecond = performance.now();
+    const secondRequestTime = endSecond - startSecond;
+
+    totalFirstRequestTime += firstRequestTime;
+    totalSecondRequestTime += secondRequestTime;
+  }
+
+  const avgFirstRequestTime = totalFirstRequestTime / coldStartRuns;
+  const avgSecondRequestTime = totalSecondRequestTime / coldStartRuns;
+  const coldStartPenalty =
+    ((avgFirstRequestTime - avgSecondRequestTime) / avgFirstRequestTime) * 100;
+
+  return { avgFirstRequestTime, avgSecondRequestTime, coldStartPenalty };
+}
+
+console.log("\nCold Start Benchmark Results:");
+
+for (const model of coldStartModels) {
+  console.log(`\nModel: ${model}`);
+
+  for (const schema of schemas) {
+    const { avgFirstRequestTime, avgSecondRequestTime, coldStartPenalty } = await measureColdStart(
+      model,
+      schema
+    );
+    console.log(`\n  Schema: ${schema}`);
+    console.log(`    Average First Request Time: ${avgFirstRequestTime.toFixed(4)} ms`);
+    console.log(`    Average Second Request Time: ${avgSecondRequestTime.toFixed(4)} ms`);
+    console.log(`    Speedup: ${coldStartPenalty.toFixed(4)}%`);
+  }
+}
