@@ -9,5 +9,6 @@ This repository contains a benchmark of OpenAI's GPT-4o and GPT-4o-mini models t
 
 ```bash
 bun i
-bun run ./index.ts
+bun run ./index.ts # to check the cost and latency of the models
+bun run ./coldstarts.ts # to check the cold start penalty of the models
 ```
